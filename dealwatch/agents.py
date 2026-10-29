@@ -66,9 +66,14 @@ def ask(prompt, schema):
 # ---------- Agents ----------
 def analyze_agent(records):
     prompt = (
-        "You are a sales pipeline analyst. For each at-risk Salesforce record below, "
-        "explain the root cause, assign a risk level, and recommend one action. "
-        "Consider the amount, stage, and how many days are involved.\n\n"
+       "You are a sales pipeline analyst. Analyze ONLY the Salesforce data provided. "
+        "Do not assume or invent any information that is not explicitly present in the records. "
+        "For example, do not assume a lead is inbound, outbound, referred, or from a specific "
+        "source unless that information is provided. "
+        "For each at-risk Salesforce record, explain the root cause, assign a risk level "
+        "(High, Medium, or Low), and recommend one action. "
+        "For opportunities, consider amount, stage, and detected risk reasons. "
+        "For leads, use only the company, status, and detected risk reasons.\n\n"
         f"Records:\n{json.dumps(records, indent=2)}"
     )
     return ask(prompt, AnalysisList)
@@ -76,9 +81,12 @@ def analyze_agent(records):
 
 def prioritize_agent(records, analysis):
     prompt = (
-        "You are a sales manager. Rank these at-risk records from most to least urgent. "
-        "Weigh deal amount, risk level, and days overdue or without contact. "
-        "Each record gets a unique rank.\n\n"
+       "You are a sales manager. Rank these at-risk records from most to least urgent. "
+        "Use ONLY the Salesforce data and analysis provided. "
+        "Do not invent missing information. "
+        "For opportunities, consider deal amount, stage, risk level, and detected risk reasons. "
+        "For leads, consider risk level and detected risk reasons. "
+        "Each record must receive one unique rank.\n\n"
         f"Records:\n{json.dumps(records, indent=2)}\n\n"
         f"Analysis:\n{json.dumps([a.model_dump() for a in analysis], indent=2)}"
     )
@@ -87,8 +95,11 @@ def prioritize_agent(records, analysis):
 
 def draft_agent(records, analysis):
     prompt = (
-        "You are a sales assistant. For each record, write a follow-up Salesforce Task "
-        "and a short, professional alert message for the sales team.\n\n"
+       "You are a sales assistant. Use ONLY the Salesforce data and analysis provided. "
+        "Do not invent missing customer details, lead source, contact history, decision-makers, "
+        "or other facts. "
+        "For each record, write a follow-up Salesforce Task and a short professional alert "
+        "for the sales team.\n\n"
         f"Records:\n{json.dumps(records, indent=2)}\n\n"
         f"Analysis:\n{json.dumps([a.model_dump() for a in analysis], indent=2)}"
     )
