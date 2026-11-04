@@ -3,7 +3,7 @@ from agents import analyze_agent, prioritize_agent, draft_agent
 from actions import create_task
 from notify import send_email_alert
 from sf_client import get_sf
-
+from logger import log_action
 
 def main():
     print("\n=== DEALWATCH ===")
@@ -74,6 +74,7 @@ def main():
 
         try:
             task_id = create_task(sf, record, draft, p)
+
             if task_id:
                 print(f"✅ Task created for {p.name}")
                 print(f"   Task ID: {task_id}")
@@ -81,16 +82,24 @@ def main():
 
                 if send_email_alert(sf, record, draft, p):
                     print("   📧 Email alert sent")
+                    email_status = "Sent"
                 else:
                     print("   ⚠️ Email alert failed")
+                    email_status = "Failed"
+
+                log_action(record, p, "Created", task_id, email_status)
             else:
                 print(f"⏭️  Skipped {p.name}: an open DealWatch task already exists.")
+                log_action(record, p, "Skipped", email_status="Not sent")
+
         except Exception as e:
             print(f"❌ Failed for {p.name}: {e}")
+            log_action(record, p, "Failed", email_status="Not sent", error=str(e))
 
         print()
 
     print("Done.")
+    print("📝 Actions logged to logs/dealwatch_log.csv")
 
 
 if __name__ == "__main__":
