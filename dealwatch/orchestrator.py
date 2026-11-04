@@ -1,7 +1,7 @@
 from detect import run_detection
 from agents import analyze_agent, prioritize_agent, draft_agent
 from actions import create_task
-from notify import send_email_alert
+from notify import send_email_alert, send_digest_email
 from sf_client import get_sf
 from logger import log_action
 
@@ -63,6 +63,8 @@ def main():
     # 7. Execute approved actions
     print("\n=== EXECUTING APPROVED ACTIONS ===\n")
     sf = get_sf()
+    batch = len(selected) > 1   # 'all' -> one summary email
+    created = []                # records waiting for the summary email
 
     for p in selected:
         record = record_map.get(p.id)
@@ -78,16 +80,17 @@ def main():
             if task_id:
                 print(f"✅ Task created for {p.name}")
                 print(f"   Task ID: {task_id}")
-                print(f"   Subject: [DealWatch] {draft.task_subject}")
 
-                if send_email_alert(sf, record, draft, p):
-                    print("   📧 Email alert sent")
-                    email_status = "Sent"
+                if batch:
+                    created.append((record, draft, p, task_id))
                 else:
-                    print("   ⚠️ Email alert failed")
-                    email_status = "Failed"
-
-                log_action(record, p, "Created", task_id, email_status)
+                    if send_email_alert(sf, record, draft, p):
+                        print("   📧 Email alert sent")
+                        email_status = "Sent"
+                    else:
+                        print("   ⚠️ Email alert failed")
+                        email_status = "Failed"
+                    log_action(record, p, "Created", task_id, email_status)
             else:
                 print(f"⏭️  Skipped {p.name}: an open DealWatch task already exists.")
                 log_action(record, p, "Skipped", email_status="Not sent")
@@ -97,6 +100,14 @@ def main():
             log_action(record, p, "Failed", email_status="Not sent", error=str(e))
 
         print()
+
+    # One summary email for all newly created tasks
+    if created:
+        sent = send_digest_email(sf, [(r, d, p) for r, d, p, _ in created])
+        status = "Sent (summary)" if sent else "Failed"
+        print("📧 Summary email sent" if sent else "⚠️ Summary email failed")
+        for r, d, p, task_id in created:
+            log_action(r, p, "Created", task_id, status)
 
     print("Done.")
     print("📝 Actions logged to logs/dealwatch_log.csv")
