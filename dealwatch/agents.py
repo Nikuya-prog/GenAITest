@@ -9,7 +9,7 @@ from detect import run_detection
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 
 # ---------- Output schemas ----------
@@ -125,3 +125,18 @@ if __name__ == "__main__":
     print("\n=== DRAFT ===")
     for d in drafts:
         print(f"{d.name}\n  Task: {d.task_subject}\n  Alert: {d.alert_message}\n")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
