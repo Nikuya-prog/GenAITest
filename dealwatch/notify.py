@@ -3,7 +3,9 @@ import json
 from dotenv import load_dotenv
 
 load_dotenv()
-EMAIL_TO = os.getenv("ALERT_EMAIL_TO")
+EMAIL_TO = ",".join(
+    e.strip() for e in os.getenv("ALERT_EMAIL_TO", "").split(",") if e.strip()
+)
 EMAIL_FROM = os.getenv("ALERT_EMAIL_FROM")
 
 
@@ -14,32 +16,35 @@ def send_email_alert(sf, record, draft, priority, recipient=None):
         print("   ⚠️ ALERT_EMAIL_TO is missing in .env")
         return False
 
-    body = (
-        f"{draft.alert_message}\n\n"
-        f"Record:   {record['type']}: {record['name']}\n"
-        f"Priority: #{priority.rank} (score {priority.score})\n"
-        f"Task:     {draft.task_subject}\n\n"
-        f"Details:\n{draft.task_description}\n\n"
-        "— Sent automatically by DealWatch"
-    )
-
     email_input = {
         "emailAddresses": email_to,
         "emailSubject": f"DealWatch Alert: {record['name']}",
         "emailBody": body,
     }
+    remaining = sf.limits()["SingleEmail"]["Remaining"]
+    recipients = len(EMAIL_TO.split(","))
+    if remaining < recipients:
+        print(f"   ⚠️ Daily email limit reached ({remaining} left, need {recipients}). Try again tomorrow.")
+        return False
 
-    # Send as "DealWatch" if an org-wide address is set
+    try:
+        remaining = sf.limits()["SingleEmail"]["Remaining"]
+        recipients = len(EMAIL_TO.split(","))
+        if remaining < recipients:
+            print(f"   ⚠️ Daily email limit reached ({remaining} left, need {recipients}). Try again tomorrow.")
+            return False
+    except Exception:
+        pass  # if the limit check fails, still try to send
+    
     if EMAIL_FROM:
         email_input["senderType"] = "OrgWideEmailAddress"
         email_input["senderAddress"] = EMAIL_FROM
 
-    payload = {"inputs": [email_input]}
     try:
         result = sf.restful(
             "actions/standard/emailSimple",
             method="POST",
-            data=json.dumps(payload),
+            data=json.dumps({"inputs": [email_input]}),
         )
         if result[0].get("isSuccess"):
             return True
