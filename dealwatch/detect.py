@@ -17,7 +17,7 @@ def detect_opportunities(sf):
         "WHERE IsClosed = false "
         f"AND (Last_Contact_Date__c <= {stalled_cutoff} OR CloseDate < {today_str})"
     )
-    records = sf.query(query)["records"]
+    records = sf.query_all(query)["records"]
 
     flagged = []
     for o in records:
@@ -50,7 +50,7 @@ def detect_leads(sf):
         "WHERE Status = 'Open - Not Contacted' "
         f"AND Lead_Received_Date__c <= {lead_cutoff}"
     )
-    records = sf.query(query)["records"]
+    records = sf.query_all(query)["records"]
 
     flagged = []
     for l in records:

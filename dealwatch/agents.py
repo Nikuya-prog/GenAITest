@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from typing import List
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -62,48 +63,126 @@ def ask(prompt, schema):
     )
     return response.parsed.items
 
+#---------- New Batching Function ----------
+BATCH_SIZE = 20
+BATCH_PAUSE = 2
+
+
+def in_batches(items):
+    for i in range(0, len(items), BATCH_SIZE):
+        yield items[i:i + BATCH_SIZE]
+
+
+def run_batched(records, fn):
+    results = []
+    batches = list(in_batches(records))
+
+    for i, batch in enumerate(batches, start=1):
+        if len(batches) > 1:
+            print(f"   Batch {i}/{len(batches)} ({len(batch)} records)")
+
+        results += fn(batch)
+
+        if i < len(batches):
+            time.sleep(BATCH_PAUSE)
+
+    return results
+
 
 # ---------- Agents ----------
-def analyze_agent(records):
+def _analyze_batch(records):
     prompt = (
-       "You are a sales pipeline analyst. Analyze ONLY the Salesforce data provided. "
-        "Do not assume or invent any information that is not explicitly present in the records. "
-        "For example, do not assume a lead is inbound, outbound, referred, or from a specific "
-        "source unless that information is provided. "
+        "You are a sales pipeline analyst. Analyze ONLY the Salesforce data provided. "
+        "Do not assume or invent any information that is not explicitly present. "
         "For each at-risk Salesforce record, explain the root cause, assign a risk level "
         "(High, Medium, or Low), and recommend one action. "
         "For opportunities, consider amount, stage, and detected risk reasons. "
-        "For leads, use only the company, status, and detected risk reasons.\n\n"
+        "For leads, use only company, status, and detected risk reasons. "
+        "Return exactly one item per record using the same id.\n\n"
         f"Records:\n{json.dumps(records, indent=2)}"
     )
+
     return ask(prompt, AnalysisList)
 
 
-def prioritize_agent(records, analysis):
+def _prioritize_batch(records, analysis):
     prompt = (
-       "You are a sales manager. Rank these at-risk records from most to least urgent. "
+        "You are a sales manager. Score each at-risk record from 1 to 100 for urgency. "
         "Use ONLY the Salesforce data and analysis provided. "
         "Do not invent missing information. "
-        "For opportunities, consider deal amount, stage, risk level, and detected risk reasons. "
-        "For leads, consider risk level and detected risk reasons. "
-        "Each record must receive one unique rank.\n\n"
+        "Use this scoring guide:\n"
+        "- 80-100: High risk opportunity with large amount, or stalled AND overdue\n"
+        "- 60-79: Opportunity stalled OR overdue with moderate amount\n"
+        "- 40-59: Medium risk lead, or low-amount opportunity\n"
+        "- 1-39: Low risk lead or minor issue\n"
+        "More days stalled or overdue should increase the score. "
+        "Set rank to 0 because Python will assign final ranks later. "
+        "Return exactly one item per record using the same id.\n\n"
         f"Records:\n{json.dumps(records, indent=2)}\n\n"
         f"Analysis:\n{json.dumps([a.model_dump() for a in analysis], indent=2)}"
     )
+
     return ask(prompt, PriorityList)
 
 
-def draft_agent(records, analysis):
+def _draft_batch(records, analysis):
     prompt = (
-       "You are a sales assistant. Use ONLY the Salesforce data and analysis provided. "
-        "Do not invent missing customer details, lead source, contact history, decision-makers, "
-        "or other facts. "
-        "For each record, write a follow-up Salesforce Task and a short professional alert "
-        "for the sales team.\n\n"
+        "You are a sales assistant. "
+        "Use ONLY the Salesforce data and analysis provided. "
+        "Do not invent missing customer details, lead source, contact history, "
+        "decision-makers, or other facts. "
+        "For each record, write a follow-up Salesforce Task and a short "
+        "professional alert for the sales team. "
+        "Return exactly one item per record using the same id.\n\n"
         f"Records:\n{json.dumps(records, indent=2)}\n\n"
         f"Analysis:\n{json.dumps([a.model_dump() for a in analysis], indent=2)}"
     )
+
     return ask(prompt, DraftList)
+
+
+# ---------- Public agents ----------
+
+def analyze_agent(records):
+    return run_batched(records, _analyze_batch)
+
+
+def prioritize_agent(records, analysis):
+    analysis_map = {a.id: a for a in analysis}
+
+    def fn(batch):
+        batch_analysis = [
+            analysis_map[r["id"]]
+            for r in batch
+            if r["id"] in analysis_map
+        ]
+
+        return _prioritize_batch(batch, batch_analysis)
+
+    priorities = run_batched(records, fn)
+
+    # Highest score becomes rank 1 across ALL batches
+    priorities.sort(key=lambda p: p.score, reverse=True)
+
+    for i, p in enumerate(priorities, start=1):
+        p.rank = i
+
+    return priorities
+
+
+def draft_agent(records, analysis):
+    analysis_map = {a.id: a for a in analysis}
+
+    def fn(batch):
+        batch_analysis = [
+            analysis_map[r["id"]]
+            for r in batch
+            if r["id"] in analysis_map
+        ]
+
+        return _draft_batch(batch, batch_analysis)
+
+    return run_batched(records, fn)
 
 
 # ---------- Test run ----------
