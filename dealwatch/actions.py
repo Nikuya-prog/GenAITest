@@ -37,4 +37,8 @@ def create_task(sf, record, draft, priority):
     else:
         task["WhoId"] = record["id"]
 
+    if not record.get("owner_id"):
+        raise ValueError(f"Salesforce owner is missing for record {record['id']}.")
+    task["OwnerId"] = record["owner_id"]
+
     return sf.Task.create(task)["id"]

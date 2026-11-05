@@ -8,7 +8,7 @@ from google.genai import types
 from detect import run_detection
 
 load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+client = None
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 
@@ -51,6 +51,13 @@ class DraftList(BaseModel):
 
 # ---------- Helper ----------
 def ask(prompt, schema):
+    global client
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not configured.")
+    if client is None:
+        client = genai.Client(api_key=api_key)
+
     response = client.models.generate_content(
         model=MODEL,
         contents=prompt,
